@@ -19,6 +19,11 @@ import type {
   ClinicalResultRow,
   CoordinationEventRow,
   AuditEventRow,
+  AppointmentRow,
+  EncounterRow,
+  CarePlanRow,
+  PrescriptionRow,
+  InvestigationOrderRow,
 } from '@/types'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? ''
@@ -789,4 +794,520 @@ export async function saveCoordinationEvent(params: {
     created_by: userId,
   })
   return id
+}
+
+// --- Outpatient: Appointments ---
+
+export async function fetchAppointments(unitId: string): Promise<AppointmentRow[]> {
+  const rows = await restRequest<Array<{
+    id: string
+    unit_id: string
+    patient_id: string
+    clinician_id: string
+    kind: string
+    status: string
+    encrypted_reason: string | null
+    start_at: string
+    end_at: string
+    encrypted_notes: string | null
+    check_in_at: string | null
+    check_out_at: string | null
+    updated_at: string
+  }>>('rest/v1/appointments', 'GET', {
+    query: {
+      select: 'id,unit_id,patient_id,clinician_id,kind,status,encrypted_reason,start_at,end_at,encrypted_notes,check_in_at,check_out_at,updated_at',
+      unit_id: `eq.${unitId}`,
+      order: 'start_at.desc',
+      limit: '100',
+    },
+  })
+
+  return Promise.all(rows.map(async (r) => ({
+    id: r.id,
+    unitId: r.unit_id,
+    patientId: r.patient_id,
+    clinicianId: r.clinician_id,
+    kind: r.kind as AppointmentRow['kind'],
+    status: r.status as AppointmentRow['status'],
+    reason: r.encrypted_reason ? await decryptPatientField(r.encrypted_reason, r.unit_id, r.patient_id, r.id, 'appointments', 'encrypted_reason') : null,
+    startAt: r.start_at,
+    endAt: r.end_at,
+    notes: r.encrypted_notes ? await decryptPatientField(r.encrypted_notes, r.unit_id, r.patient_id, r.id, 'appointments', 'encrypted_notes') : null,
+    checkInAt: r.check_in_at,
+    checkOutAt: r.check_out_at,
+    updatedAt: r.updated_at,
+  })))
+}
+
+export async function createAppointment(params: {
+  unitId: string
+  patientId: string
+  clinicianId: string
+  kind: string
+  reason: string
+  startAt: string
+  endAt: string
+  notes: string
+}): Promise<string> {
+  const id = uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const encReason = await encryptPatientField(params.reason, params.unitId, params.patientId, id, 'appointments', 'encrypted_reason', patientKeyInfo.key, patientKeyInfo.keyId)
+  const encNotes = params.notes ? await encryptPatientField(params.notes, params.unitId, params.patientId, id, 'appointments', 'encrypted_notes', patientKeyInfo.key, patientKeyInfo.keyId) : null
+
+  await upsertRow('appointments', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    clinician_id: params.clinicianId,
+    kind: params.kind,
+    status: 'SCHEDULED',
+    encrypted_reason: encReason,
+    start_at: params.startAt,
+    end_at: params.endAt,
+    encrypted_notes: encNotes,
+    created_by: userId,
+  })
+  return id
+}
+
+export async function cancelAppointment(_unitId: string, appointmentId: string): Promise<void> {
+  await restRequest('rest/v1/appointments', 'PATCH', {
+    query: { id: `eq.${appointmentId}` },
+    body: { status: 'CANCELLED', updated_at: new Date().toISOString() },
+    prefer: 'return=minimal',
+  })
+}
+
+export async function checkInAppointment(_unitId: string, appointmentId: string): Promise<void> {
+  await restRequest('rest/v1/appointments', 'PATCH', {
+    query: { id: `eq.${appointmentId}` },
+    body: { status: 'CHECKED_IN', check_in_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    prefer: 'return=minimal',
+  })
+}
+
+export async function checkOutAppointment(_unitId: string, appointmentId: string): Promise<void> {
+  await restRequest('rest/v1/appointments', 'PATCH', {
+    query: { id: `eq.${appointmentId}` },
+    body: { status: 'COMPLETED', check_out_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    prefer: 'return=minimal',
+  })
+}
+
+// --- Outpatient: Encounters ---
+
+export async function fetchEncounters(unitId: string): Promise<EncounterRow[]> {
+  const rows = await restRequest<Array<{
+    id: string
+    unit_id: string
+    patient_id: string
+    appointment_id: string | null
+    clinician_id: string
+    encounter_date: string
+    status: string
+    encrypted_subjective: string | null
+    encrypted_objective: string | null
+    encrypted_assessment: string | null
+    encrypted_plan: string | null
+    encrypted_diagnosis_codes: string | null
+    encrypted_summary: string | null
+    signed_by: string | null
+    signed_at: string | null
+    updated_at: string
+  }>>('rest/v1/encounters', 'GET', {
+    query: {
+      select: 'id,unit_id,patient_id,appointment_id,clinician_id,encounter_date,status,encrypted_subjective,encrypted_objective,encrypted_assessment,encrypted_plan,encrypted_diagnosis_codes,encrypted_summary,signed_by,signed_at,updated_at',
+      unit_id: `eq.${unitId}`,
+      order: 'encounter_date.desc',
+      limit: '100',
+    },
+  })
+
+  return Promise.all(rows.map(async (r) => ({
+    id: r.id,
+    unitId: r.unit_id,
+    patientId: r.patient_id,
+    appointmentId: r.appointment_id,
+    clinicianId: r.clinician_id,
+    encounterDate: r.encounter_date,
+    status: r.status as EncounterRow['status'],
+    subjective: r.encrypted_subjective ? await decryptPatientField(r.encrypted_subjective, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_subjective') : null,
+    objective: r.encrypted_objective ? await decryptPatientField(r.encrypted_objective, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_objective') : null,
+    assessment: r.encrypted_assessment ? await decryptPatientField(r.encrypted_assessment, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_assessment') : null,
+    plan: r.encrypted_plan ? await decryptPatientField(r.encrypted_plan, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_plan') : null,
+    diagnosisCodes: r.encrypted_diagnosis_codes ? await decryptPatientField(r.encrypted_diagnosis_codes, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_diagnosis_codes') : null,
+    summary: r.encrypted_summary ? await decryptPatientField(r.encrypted_summary, r.unit_id, r.patient_id, r.id, 'encounters', 'encrypted_summary') : null,
+    signedBy: r.signed_by,
+    signedAt: r.signed_at,
+    updatedAt: r.updated_at,
+  })))
+}
+
+export async function createEncounter(params: {
+  unitId: string
+  patientId: string
+  clinicianId: string
+  appointmentId?: string
+  subjective: string
+  objective: string
+  assessment: string
+  plan: string
+  diagnosisCodes?: string
+}): Promise<string> {
+  const id = uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const enc = async (field: string, value: string) =>
+    encryptPatientField(value, params.unitId, params.patientId, id, 'encounters', field, patientKeyInfo.key, patientKeyInfo.keyId)
+
+  const summary = params.assessment || 'Encounter'
+  await upsertRow('encounters', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    appointment_id: params.appointmentId ?? null,
+    clinician_id: params.clinicianId,
+    encounter_date: clinicalDateIso(),
+    status: 'ACTIVE',
+    encrypted_subjective: await enc('encrypted_subjective', params.subjective),
+    encrypted_objective: await enc('encrypted_objective', params.objective),
+    encrypted_assessment: await enc('encrypted_assessment', params.assessment),
+    encrypted_plan: await enc('encrypted_plan', params.plan),
+    encrypted_diagnosis_codes: params.diagnosisCodes ? await enc('encrypted_diagnosis_codes', params.diagnosisCodes) : null,
+    encrypted_summary: await enc('encrypted_summary', summary),
+    created_by: userId,
+  })
+  return id
+}
+
+export async function signEncounter(_unitId: string, encounterId: string): Promise<void> {
+  const userId = await getUserId()
+  await restRequest('rest/v1/encounters', 'PATCH', {
+    query: { id: `eq.${encounterId}` },
+    body: { status: 'SIGNED', signed_by: userId, signed_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    prefer: 'return=minimal',
+  })
+}
+
+// --- Outpatient: Care Plans ---
+
+export async function fetchCarePlans(unitId: string): Promise<CarePlanRow[]> {
+  const rows = await restRequest<Array<{
+    id: string
+    unit_id: string
+    patient_id: string
+    encrypted_title: string
+    encrypted_description: string | null
+    encrypted_goals: string | null
+    status: string
+    review_interval_days: number
+    next_review_date: string | null
+    started_at: string
+    completed_at: string | null
+    updated_at: string
+  }>>('rest/v1/care_plans', 'GET', {
+    query: {
+      select: 'id,unit_id,patient_id,encrypted_title,encrypted_description,encrypted_goals,status,review_interval_days,next_review_date,started_at,completed_at,updated_at',
+      unit_id: `eq.${unitId}`,
+      order: 'updated_at.desc',
+      limit: '100',
+    },
+  })
+
+  return Promise.all(rows.map(async (r) => ({
+    id: r.id,
+    unitId: r.unit_id,
+    patientId: r.patient_id,
+    title: await decryptPatientField(r.encrypted_title, r.unit_id, r.patient_id, r.id, 'care_plans', 'encrypted_title'),
+    description: r.encrypted_description ? await decryptPatientField(r.encrypted_description, r.unit_id, r.patient_id, r.id, 'care_plans', 'encrypted_description') : null,
+    goals: r.encrypted_goals ? await decryptPatientField(r.encrypted_goals, r.unit_id, r.patient_id, r.id, 'care_plans', 'encrypted_goals') : null,
+    status: r.status as CarePlanRow['status'],
+    reviewIntervalDays: r.review_interval_days,
+    nextReviewDate: r.next_review_date,
+    startedAt: r.started_at,
+    completedAt: r.completed_at,
+    updatedAt: r.updated_at,
+  })))
+}
+
+export async function createCarePlan(params: {
+  unitId: string
+  patientId: string
+  title: string
+  description: string
+  goals: string
+  reviewIntervalDays: number
+}): Promise<string> {
+  const id = uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const enc = async (field: string, value: string) =>
+    encryptPatientField(value, params.unitId, params.patientId, id, 'care_plans', field, patientKeyInfo.key, patientKeyInfo.keyId)
+
+  await upsertRow('care_plans', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    encrypted_title: await enc('encrypted_title', params.title),
+    encrypted_description: params.description ? await enc('encrypted_description', params.description) : null,
+    encrypted_goals: params.goals ? await enc('encrypted_goals', params.goals) : null,
+    status: 'ACTIVE',
+    review_interval_days: params.reviewIntervalDays || 90,
+    created_by: userId,
+  })
+  return id
+}
+
+export async function updateCarePlanStatus(_unitId: string, carePlanId: string, status: string): Promise<void> {
+  const body: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
+  if (status === 'COMPLETED') body.completed_at = new Date().toISOString()
+  await restRequest('rest/v1/care_plans', 'PATCH', {
+    query: { id: `eq.${carePlanId}` },
+    body,
+    prefer: 'return=minimal',
+  })
+}
+
+// --- Outpatient: Prescriptions ---
+
+export async function fetchPrescriptions(unitId: string): Promise<PrescriptionRow[]> {
+  const rows = await restRequest<Array<{
+    id: string
+    unit_id: string
+    patient_id: string
+    encounter_id: string | null
+    encrypted_medication_name: string
+    encrypted_dose: string
+    encrypted_frequency: string
+    encrypted_route: string | null
+    encrypted_instructions: string | null
+    status: string
+    starts_on: string
+    ends_on: string | null
+    repeat_count: number
+    repeats_used: number
+    next_review_date: string | null
+    updated_at: string
+  }>>('rest/v1/prescriptions', 'GET', {
+    query: {
+      select: 'id,unit_id,patient_id,encounter_id,encrypted_medication_name,encrypted_dose,encrypted_frequency,encrypted_route,encrypted_instructions,status,starts_on,ends_on,repeat_count,repeats_used,next_review_date,updated_at',
+      unit_id: `eq.${unitId}`,
+      order: 'updated_at.desc',
+      limit: '100',
+    },
+  })
+
+  return Promise.all(rows.map(async (r) => ({
+    id: r.id,
+    unitId: r.unit_id,
+    patientId: r.patient_id,
+    encounterId: r.encounter_id,
+    medicationName: await decryptPatientField(r.encrypted_medication_name, r.unit_id, r.patient_id, r.id, 'prescriptions', 'encrypted_medication_name'),
+    dose: await decryptPatientField(r.encrypted_dose, r.unit_id, r.patient_id, r.id, 'prescriptions', 'encrypted_dose'),
+    frequency: await decryptPatientField(r.encrypted_frequency, r.unit_id, r.patient_id, r.id, 'prescriptions', 'encrypted_frequency'),
+    route: r.encrypted_route ? await decryptPatientField(r.encrypted_route, r.unit_id, r.patient_id, r.id, 'prescriptions', 'encrypted_route') : null,
+    instructions: r.encrypted_instructions ? await decryptPatientField(r.encrypted_instructions, r.unit_id, r.patient_id, r.id, 'prescriptions', 'encrypted_instructions') : null,
+    status: r.status as PrescriptionRow['status'],
+    startsOn: r.starts_on,
+    endsOn: r.ends_on,
+    repeatCount: r.repeat_count,
+    repeatsUsed: r.repeats_used,
+    nextReviewDate: r.next_review_date,
+    updatedAt: r.updated_at,
+  })))
+}
+
+export async function createPrescription(params: {
+  unitId: string
+  patientId: string
+  encounterId?: string
+  medicationName: string
+  dose: string
+  frequency: string
+  route?: string
+  instructions?: string
+  startsOn?: string
+  endsOn?: string
+  repeatCount?: number
+}): Promise<string> {
+  const id = uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const enc = async (field: string, value: string) =>
+    encryptPatientField(value, params.unitId, params.patientId, id, 'prescriptions', field, patientKeyInfo.key, patientKeyInfo.keyId)
+
+  await upsertRow('prescriptions', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    encounter_id: params.encounterId ?? null,
+    encrypted_medication_name: await enc('encrypted_medication_name', params.medicationName),
+    encrypted_dose: await enc('encrypted_dose', params.dose),
+    encrypted_frequency: await enc('encrypted_frequency', params.frequency),
+    encrypted_route: params.route ? await enc('encrypted_route', params.route) : null,
+    encrypted_instructions: params.instructions ? await enc('encrypted_instructions', params.instructions) : null,
+    status: 'ACTIVE',
+    starts_on: params.startsOn ?? clinicalDateIso(),
+    ends_on: params.endsOn ?? null,
+    repeat_count: params.repeatCount ?? 0,
+    created_by: userId,
+  })
+  return id
+}
+
+export async function discontinuePrescription(_unitId: string, prescriptionId: string): Promise<void> {
+  await restRequest('rest/v1/prescriptions', 'PATCH', {
+    query: { id: `eq.${prescriptionId}` },
+    body: { status: 'DISCONTINUED', updated_at: new Date().toISOString() },
+    prefer: 'return=minimal',
+  })
+}
+
+// --- Outpatient: Investigation Orders ---
+
+export async function fetchInvestigationOrders(unitId: string): Promise<InvestigationOrderRow[]> {
+  const rows = await restRequest<Array<{
+    id: string
+    unit_id: string
+    patient_id: string
+    encounter_id: string | null
+    encrypted_test_name: string
+    encrypted_clinical_indication: string | null
+    encrypted_notes: string | null
+    status: string
+    ordered_at: string
+    resulted_at: string | null
+    acknowledged_by: string | null
+    acknowledged_at: string | null
+    updated_at: string
+  }>>('rest/v1/investigation_orders', 'GET', {
+    query: {
+      select: 'id,unit_id,patient_id,encounter_id,encrypted_test_name,encrypted_clinical_indication,encrypted_notes,status,ordered_at,resulted_at,acknowledged_by,acknowledged_at,updated_at',
+      unit_id: `eq.${unitId}`,
+      order: 'ordered_at.desc',
+      limit: '100',
+    },
+  })
+
+  return Promise.all(rows.map(async (r) => ({
+    id: r.id,
+    unitId: r.unit_id,
+    patientId: r.patient_id,
+    encounterId: r.encounter_id,
+    testName: await decryptPatientField(r.encrypted_test_name, r.unit_id, r.patient_id, r.id, 'investigation_orders', 'encrypted_test_name'),
+    clinicalIndication: r.encrypted_clinical_indication ? await decryptPatientField(r.encrypted_clinical_indication, r.unit_id, r.patient_id, r.id, 'investigation_orders', 'encrypted_clinical_indication') : null,
+    notes: r.encrypted_notes ? await decryptPatientField(r.encrypted_notes, r.unit_id, r.patient_id, r.id, 'investigation_orders', 'encrypted_notes') : null,
+    status: r.status as InvestigationOrderRow['status'],
+    orderedAt: r.ordered_at,
+    resultedAt: r.resulted_at,
+    acknowledgedBy: r.acknowledged_by,
+    acknowledgedAt: r.acknowledged_at,
+    updatedAt: r.updated_at,
+  })))
+}
+
+export async function createInvestigationOrder(params: {
+  unitId: string
+  patientId: string
+  encounterId?: string
+  testName: string
+  clinicalIndication?: string
+  notes?: string
+}): Promise<string> {
+  const id = uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const enc = async (field: string, value: string) =>
+    encryptPatientField(value, params.unitId, params.patientId, id, 'investigation_orders', field, patientKeyInfo.key, patientKeyInfo.keyId)
+
+  await upsertRow('investigation_orders', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    encounter_id: params.encounterId ?? null,
+    encrypted_test_name: await enc('encrypted_test_name', params.testName),
+    encrypted_clinical_indication: params.clinicalIndication ? await enc('encrypted_clinical_indication', params.clinicalIndication) : null,
+    encrypted_notes: params.notes ? await enc('encrypted_notes', params.notes) : null,
+    status: 'ORDERED',
+    created_by: userId,
+  })
+  return id
+}
+
+export async function acknowledgeInvestigation(_unitId: string, investigationId: string): Promise<void> {
+  const userId = await getUserId()
+  await restRequest('rest/v1/investigation_orders', 'PATCH', {
+    query: { id: `eq.${investigationId}` },
+    body: {
+      status: 'ACKNOWLEDGED',
+      acknowledged_by: userId,
+      acknowledged_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    prefer: 'return=minimal',
+  })
+}
+
+// --- MAR: Medication Administration ---
+
+export async function saveMedicationAdministration(params: {
+  unitId: string
+  patientId: string
+  medicationRecordId: string
+  drugName: string
+  dose: string
+  route: string
+  frequency: string
+  scheduledDateIso: string
+  scheduledTimeHour: number
+  status: string
+  recordId?: string
+}): Promise<string> {
+  const id = params.recordId ?? uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const detail = [params.medicationRecordId, params.dose, params.route, params.frequency, params.scheduledDateIso, String(params.scheduledTimeHour)].join(' · ')
+  const encSummary = await encryptPatientField(
+    params.drugName, params.unitId, params.patientId, id,
+    'clinical_records', 'summary', patientKeyInfo.key, patientKeyInfo.keyId,
+  )
+  const encDetail = await encryptPatientField(
+    detail, params.unitId, params.patientId, id,
+    'clinical_records', 'detail', patientKeyInfo.key, patientKeyInfo.keyId,
+  )
+  await upsertRow('clinical_records', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    type: 'MEDICATION_ADMINISTRATION',
+    summary: encSummary,
+    detail: encDetail,
+    state: params.status,
+    clinical_date: params.scheduledDateIso,
+    created_by: userId,
+  })
+  return id
+}
+
+export async function updateMedicationAdministrationStatus(
+  _unitId: string,
+  recordId: string,
+  status: string,
+  _administeredBy?: string,
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    state: status,
+    updated_at: new Date().toISOString(),
+  }
+  if (status.toUpperCase() === 'ADMINISTERED') {
+    const userId = await getUserId()
+    body.signed_by = userId
+    body.signed_at = new Date().toISOString()
+  }
+  await restRequest('rest/v1/clinical_records', 'PATCH', {
+    query: { id: `eq.${recordId}` },
+    body,
+    prefer: 'return=minimal',
+  })
 }

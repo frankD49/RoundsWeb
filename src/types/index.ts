@@ -58,6 +58,7 @@ export type ClinicalRecordType =
   | 'DISPOSITION'
   | 'ALLERGY'
   | 'MEDICATION'
+  | 'MEDICATION_ADMINISTRATION'
 
 export interface ClinicalRecordRow {
   id: string
@@ -117,6 +118,109 @@ export interface ClinicalCipherEnvelope {
   key_id: string
   nonce: string
   ciphertext: string
+}
+
+// --- Outpatient types ---
+
+export type AppointmentKind =
+  | 'NEW_CONSULT' | 'FOLLOW_UP' | 'PROCEDURE' | 'TELEHEALTH'
+  | 'URGENT_REVIEW' | 'ANNUAL_REVIEW' | 'VACCINATION'
+
+export type AppointmentStatus =
+  | 'SCHEDULED' | 'CHECKED_IN' | 'IN_ROOM' | 'COMPLETED'
+  | 'CANCELLED' | 'NO_SHOW' | 'RESCHEDULED'
+
+export type EncounterStatus = 'DRAFT' | 'ACTIVE' | 'SIGNED' | 'AMENDED' | 'ARCHIVED'
+
+export type CarePlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'DISCONTINUED'
+
+export type PrescriptionStatus = 'ACTIVE' | 'DISCONTINUED' | 'EXPIRED' | 'CANCELLED'
+
+export type InvestigationStatus = 'ORDERED' | 'IN_PROGRESS' | 'RESULTED' | 'CANCELLED' | 'ACKNOWLEDGED'
+
+export interface AppointmentRow {
+  id: string
+  unitId: string
+  patientId: string
+  clinicianId: string
+  kind: AppointmentKind
+  status: AppointmentStatus
+  reason: string | null
+  startAt: string
+  endAt: string
+  notes: string | null
+  checkInAt: string | null
+  checkOutAt: string | null
+  updatedAt: string
+}
+
+export interface EncounterRow {
+  id: string
+  unitId: string
+  patientId: string
+  appointmentId: string | null
+  clinicianId: string
+  encounterDate: string
+  status: EncounterStatus
+  subjective: string | null
+  objective: string | null
+  assessment: string | null
+  plan: string | null
+  diagnosisCodes: string | null
+  summary: string | null
+  signedBy: string | null
+  signedAt: string | null
+  updatedAt: string
+}
+
+export interface CarePlanRow {
+  id: string
+  unitId: string
+  patientId: string
+  title: string
+  description: string | null
+  goals: string | null
+  status: CarePlanStatus
+  reviewIntervalDays: number
+  nextReviewDate: string | null
+  startedAt: string
+  completedAt: string | null
+  updatedAt: string
+}
+
+export interface PrescriptionRow {
+  id: string
+  unitId: string
+  patientId: string
+  encounterId: string | null
+  medicationName: string
+  dose: string
+  frequency: string
+  route: string | null
+  instructions: string | null
+  status: PrescriptionStatus
+  startsOn: string
+  endsOn: string | null
+  repeatCount: number
+  repeatsUsed: number
+  nextReviewDate: string | null
+  updatedAt: string
+}
+
+export interface InvestigationOrderRow {
+  id: string
+  unitId: string
+  patientId: string
+  encounterId: string | null
+  testName: string
+  clinicalIndication: string | null
+  notes: string | null
+  status: InvestigationStatus
+  orderedAt: string
+  resultedAt: string | null
+  acknowledgedBy: string | null
+  acknowledgedAt: string | null
+  updatedAt: string
 }
 
 export const CRYPTO_CONSTANTS = {

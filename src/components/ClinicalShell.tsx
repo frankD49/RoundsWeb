@@ -1,13 +1,25 @@
-import { Home, Users, Settings, LogOut, Stethoscope, Building2, ChevronDown } from 'lucide-react'
+import { Home, Users, Settings, LogOut, Stethoscope, Building2, ChevronDown, Calendar, FileText, ClipboardList, Pill, FlaskConical, BedDouble, Activity, MessageSquare, AlertCircle, BarChart3, MoreHorizontal, Cross } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, type ClinicalMode } from '@/stores/auth'
 import { useClinicalStore } from '@/stores/clinical'
 import { cn } from '@/lib/utils'
 
-const navItems = [
+const inpatientNavItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/patients', label: 'Patients', icon: Stethoscope },
+  { to: '/rx', label: 'Rx', icon: Cross },
+  { to: '/members', label: 'Members', icon: Users },
+  { to: '/settings', label: 'Settings', icon: Settings },
+]
+
+const outpatientNavItems = [
+  { to: '/outpatient-dashboard', label: 'Dashboard', icon: Home },
+  { to: '/outpatient', label: 'Appointments', icon: Calendar },
+  { to: '/outpatient', label: 'Encounters', icon: FileText },
+  { to: '/outpatient', label: 'Care Plans', icon: ClipboardList },
+  { to: '/outpatient', label: 'Prescriptions', icon: Pill },
+  { to: '/outpatient', label: 'Investigations', icon: FlaskConical },
   { to: '/members', label: 'Members', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -15,6 +27,8 @@ const navItems = [
 export default function ClinicalShell({ children }: { children: React.ReactNode }) {
   const signOut = useAuthStore((s) => s.signOut)
   const setDeviceAuthStatus = useAuthStore((s) => s.setDeviceAuthStatus)
+  const clinicalMode = useAuthStore((s) => s.clinicalMode)
+  const setClinicalMode = useAuthStore((s) => s.setClinicalMode)
   const navigate = useNavigate()
   const units = useClinicalStore((s) => s.units)
   const activeUnitId = useClinicalStore((s) => s.activeUnitId)
@@ -22,6 +36,7 @@ export default function ClinicalShell({ children }: { children: React.ReactNode 
   const [unitMenuOpen, setUnitMenuOpen] = useState(false)
 
   const activeUnit = units.find((u) => u.id === activeUnitId)
+  const navItems = clinicalMode === 'outpatient' ? outpatientNavItems : inpatientNavItems
 
   const handleSignOut = async () => {
     await signOut()
@@ -34,16 +49,55 @@ export default function ClinicalShell({ children }: { children: React.ReactNode 
     setUnitMenuOpen(false)
   }
 
+  const handleModeSwitch = (mode: ClinicalMode) => {
+    setClinicalMode(mode)
+    if (mode === 'outpatient') {
+      navigate('/outpatient-dashboard')
+    } else {
+      navigate('/')
+    }
+  }
+
   return (
-    <div className="flex h-screen bg-clinical-background">
-      <aside className="w-60 bg-clinical-surface border-r border-clinical-border flex flex-col">
-        <div className="px-5 py-5 border-b border-clinical-border">
-          <h1 className="text-lg font-bold text-clinical-primary">Rounds</h1>
+    <div className={cn("flex h-screen", clinicalMode === 'outpatient' ? "bg-outpatient-background" : "bg-clinical-background")}>
+      <aside className={cn("w-60 border-r flex flex-col", clinicalMode === 'outpatient' ? "bg-outpatient-surface border-outpatient-border" : "bg-clinical-surface border-clinical-border")}>
+        <div className={cn("px-5 py-5 border-b", clinicalMode === 'outpatient' ? "border-outpatient-border" : "border-clinical-border")}>
+          <h1 className={cn("text-lg font-bold", clinicalMode === 'outpatient' ? "text-outpatient-primary" : "text-clinical-primary")}>Rounds</h1>
           <p className="text-xs text-gray-500 mt-0.5">Clinical Workspace</p>
         </div>
 
+        {/* Mode switcher */}
+        <div className={cn("px-3 py-3 border-b", clinicalMode === 'outpatient' ? "border-outpatient-border" : "border-clinical-border")}>
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => handleModeSwitch('inpatient')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition-colors',
+                clinicalMode === 'inpatient'
+                  ? 'bg-white text-clinical-primary shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              <Stethoscope className="w-3.5 h-3.5" />
+              Inpatient
+            </button>
+            <button
+              onClick={() => handleModeSwitch('outpatient')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition-colors',
+                clinicalMode === 'outpatient'
+                  ? 'bg-white text-outpatient-primary shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              Outpatient
+            </button>
+          </div>
+        </div>
+
         {/* Unit selector */}
-        <div className="px-3 py-3 border-b border-clinical-border relative">
+        <div className={cn("px-3 py-3 border-b relative", clinicalMode === 'outpatient' ? "border-outpatient-border" : "border-clinical-border")}>
           <button
             onClick={() => setUnitMenuOpen(!unitMenuOpen)}
             className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -75,15 +129,15 @@ export default function ClinicalShell({ children }: { children: React.ReactNode 
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => (
             <NavLink
-              key={item.to}
+              key={item.label}
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-clinical-primary/10 text-clinical-primary'
-                    : 'text-gray-600 hover:bg-gray-100'
+                      isActive
+                    ? (clinicalMode === 'outpatient' ? 'bg-outpatient-primary/10 text-outpatient-primary' : 'bg-clinical-primary/10 text-clinical-primary')
+                    : 'text-black hover:bg-gray-100'
                 )
               }
             >
@@ -92,7 +146,7 @@ export default function ClinicalShell({ children }: { children: React.ReactNode 
             </NavLink>
           ))}
         </nav>
-        <div className="px-3 py-4 border-t border-clinical-border">
+        <div className={cn("px-3 py-4 border-t", clinicalMode === 'outpatient' ? "border-outpatient-border" : "border-clinical-border")}>
           <button
             onClick={handleSignOut}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 w-full transition-colors"

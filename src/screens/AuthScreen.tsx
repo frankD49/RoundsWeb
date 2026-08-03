@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { Stethoscope, AlertCircle, CheckCircle, Info, X, Smartphone, Apple } from 'lucide-react'
+import { Stethoscope, AlertCircle, CheckCircle, Info, X, Smartphone, Apple, Fingerprint } from 'lucide-react'
 
 type BannerType = 'error' | 'success' | 'info'
 
@@ -76,6 +76,13 @@ export default function AuthScreen() {
 
             {error && <Banner type="error" message={error} onDismiss={clearError} />}
             {successMsg && <Banner type="success" message={successMsg} onDismiss={() => setSuccessMsg(null)} />}
+
+            {/* Biometric 2FA option (disabled — coming soon) */}
+            <label className="flex items-center gap-3 cursor-not-allowed opacity-60">
+              <Fingerprint className="w-5 h-5 text-gray-400 flex-shrink-0" />
+              <span className="text-sm text-gray-500 flex-1">Require biometric verification (2FA)</span>
+              <input type="checkbox" disabled className="w-4 h-4 rounded border-gray-300 text-clinical-primary focus:ring-clinical-primary/20" />
+            </label>
 
             <button
               type="submit"

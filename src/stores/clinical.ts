@@ -7,6 +7,11 @@ import type {
   ClinicalRecordRow,
   ClinicalResultRow,
   CoordinationEventRow,
+  AppointmentRow,
+  EncounterRow,
+  CarePlanRow,
+  PrescriptionRow,
+  InvestigationOrderRow,
 } from '@/types'
 import * as api from '@/lib/api'
 
@@ -43,6 +48,26 @@ interface ClinicalState extends MessageState {
   // Timeline
   timeline: CoordinationEventRow[]
   isLoadingTimeline: boolean
+
+  // Outpatient: Appointments
+  appointments: AppointmentRow[]
+  isLoadingAppointments: boolean
+
+  // Outpatient: Encounters
+  encounters: EncounterRow[]
+  isLoadingEncounters: boolean
+
+  // Outpatient: Care Plans
+  carePlans: CarePlanRow[]
+  isLoadingCarePlans: boolean
+
+  // Outpatient: Prescriptions
+  prescriptions: PrescriptionRow[]
+  isLoadingPrescriptions: boolean
+
+  // Outpatient: Investigations
+  investigations: InvestigationOrderRow[]
+  isLoadingInvestigations: boolean
 
   // Actions
   loadUnits: () => Promise<void>
@@ -134,10 +159,97 @@ interface ClinicalState extends MessageState {
     body: string
   }) => Promise<string | null>
 
+  // Outpatient actions
+  loadAppointments: (unitId: string) => Promise<void>
+  loadEncounters: (unitId: string) => Promise<void>
+  loadCarePlans: (unitId: string) => Promise<void>
+  loadPrescriptions: (unitId: string) => Promise<void>
+  loadInvestigations: (unitId: string) => Promise<void>
+  createAppointment: (params: {
+    unitId: string
+    patientId: string
+    clinicianId: string
+    kind: string
+    reason: string
+    startAt: string
+    endAt: string
+    notes: string
+  }) => Promise<string | null>
+  cancelAppointment: (unitId: string, appointmentId: string) => Promise<void>
+  checkInAppointment: (unitId: string, appointmentId: string) => Promise<void>
+  checkOutAppointment: (unitId: string, appointmentId: string) => Promise<void>
+  createEncounter: (params: {
+    unitId: string
+    patientId: string
+    clinicianId: string
+    appointmentId?: string
+    subjective: string
+    objective: string
+    assessment: string
+    plan: string
+    diagnosisCodes?: string
+  }) => Promise<string | null>
+  signEncounter: (unitId: string, encounterId: string) => Promise<void>
+  createCarePlan: (params: {
+    unitId: string
+    patientId: string
+    title: string
+    description: string
+    goals: string
+    reviewIntervalDays: number
+  }) => Promise<string | null>
+  updateCarePlanStatus: (unitId: string, carePlanId: string, status: string) => Promise<void>
+  createPrescription: (params: {
+    unitId: string
+    patientId: string
+    encounterId?: string
+    medicationName: string
+    dose: string
+    frequency: string
+    route?: string
+    instructions?: string
+    startsOn?: string
+    endsOn?: string
+    repeatCount?: number
+  }) => Promise<string | null>
+  discontinuePrescription: (unitId: string, prescriptionId: string) => Promise<void>
+  createInvestigationOrder: (params: {
+    unitId: string
+    patientId: string
+    encounterId?: string
+    testName: string
+    clinicalIndication?: string
+    notes?: string
+  }) => Promise<string | null>
+  acknowledgeInvestigation: (unitId: string, investigationId: string) => Promise<void>
+
+  // MAR actions
+  medicationAdministrations: ClinicalRecordRow[]
+  generateMarDoses: (unitId: string, dateIso: string) => Promise<void>
+  administerDose: (unitId: string, recordId: string) => Promise<void>
+  refuseDose: (unitId: string, recordId: string) => Promise<void>
+
   dismissError: () => void
   dismissSuccess: () => void
   dismissInfo: () => void
   clearMessages: () => void
+}
+
+function parseFrequencyToHours(frequency: string): number[] {
+  const upper = frequency.toUpperCase()
+  if (upper.includes('OD') || upper.includes('DAILY') || upper.includes('QD')) return [8]
+  if (upper.includes('BD') || upper.includes('BID')) return [8, 20]
+  if (upper.includes('TDS') || upper.includes('TID') || upper.includes('Q8H')) return [8, 14, 20]
+  if (upper.includes('QDS') || upper.includes('QID') || upper.includes('Q6H')) return [6, 12, 18, 0]
+  if (upper.includes('Q4H')) return [4, 8, 12, 16, 20, 0]
+  if (upper.includes('PRN')) return [10]
+  if (upper.includes('STAT')) return [new Date().getHours()]
+  return [8]
+}
+
+function extractScheduledHour(detail: string): number {
+  const parts = detail.split(' · ')
+  return parseInt(parts[parts.length - 1] ?? '0', 10) || 0
 }
 
 export const useClinicalStore = create<ClinicalState>((set) => ({
@@ -166,6 +278,18 @@ export const useClinicalStore = create<ClinicalState>((set) => ({
   timeline: [],
   isLoadingTimeline: false,
 
+  appointments: [],
+  isLoadingAppointments: false,
+  encounters: [],
+  isLoadingEncounters: false,
+  carePlans: [],
+  isLoadingCarePlans: false,
+  prescriptions: [],
+  isLoadingPrescriptions: false,
+  investigations: [],
+  isLoadingInvestigations: false,
+  medicationAdministrations: [],
+
   loadUnits: async () => {
     set({ isLoadingUnits: true, error: null })
     try {
@@ -180,7 +304,7 @@ export const useClinicalStore = create<ClinicalState>((set) => ({
 
   selectUnit: (unitId) => {
     localStorage.setItem('rounds-active-unit', unitId)
-    set({ activeUnitId: unitId, members: [], patients: [], records: [], results: [], timeline: [] })
+    set({ activeUnitId: unitId, members: [], patients: [], records: [], results: [], timeline: [], appointments: [], encounters: [], carePlans: [], prescriptions: [], investigations: [] })
   },
 
   createUnit: async (name) => {
@@ -410,6 +534,261 @@ export const useClinicalStore = create<ClinicalState>((set) => ({
     } catch (e) {
       set({ error: String(e instanceof Error ? e.message : e) })
       return null
+    }
+  },
+
+  // --- Outpatient actions ---
+
+  loadAppointments: async (unitId) => {
+    set({ isLoadingAppointments: true, error: null })
+    try {
+      const appointments = await api.fetchAppointments(unitId)
+      set({ appointments, isLoadingAppointments: false })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e), isLoadingAppointments: false })
+    }
+  },
+
+  loadEncounters: async (unitId) => {
+    set({ isLoadingEncounters: true, error: null })
+    try {
+      const encounters = await api.fetchEncounters(unitId)
+      set({ encounters, isLoadingEncounters: false })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e), isLoadingEncounters: false })
+    }
+  },
+
+  loadCarePlans: async (unitId) => {
+    set({ isLoadingCarePlans: true, error: null })
+    try {
+      const carePlans = await api.fetchCarePlans(unitId)
+      set({ carePlans, isLoadingCarePlans: false })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e), isLoadingCarePlans: false })
+    }
+  },
+
+  loadPrescriptions: async (unitId) => {
+    set({ isLoadingPrescriptions: true, error: null })
+    try {
+      const prescriptions = await api.fetchPrescriptions(unitId)
+      set({ prescriptions, isLoadingPrescriptions: false })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e), isLoadingPrescriptions: false })
+    }
+  },
+
+  loadInvestigations: async (unitId) => {
+    set({ isLoadingInvestigations: true, error: null })
+    try {
+      const investigations = await api.fetchInvestigationOrders(unitId)
+      set({ investigations, isLoadingInvestigations: false })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e), isLoadingInvestigations: false })
+    }
+  },
+
+  createAppointment: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.createAppointment(params)
+      const appointments = await api.fetchAppointments(params.unitId)
+      set({ appointments, success: 'Appointment scheduled.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  cancelAppointment: async (unitId, appointmentId) => {
+    set({ error: null, success: null })
+    try {
+      await api.cancelAppointment(unitId, appointmentId)
+      const appointments = await api.fetchAppointments(unitId)
+      set({ appointments, success: 'Appointment cancelled.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  checkInAppointment: async (unitId, appointmentId) => {
+    set({ error: null, success: null })
+    try {
+      await api.checkInAppointment(unitId, appointmentId)
+      const appointments = await api.fetchAppointments(unitId)
+      set({ appointments, success: 'Patient checked in.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  checkOutAppointment: async (unitId, appointmentId) => {
+    set({ error: null, success: null })
+    try {
+      await api.checkOutAppointment(unitId, appointmentId)
+      const appointments = await api.fetchAppointments(unitId)
+      set({ appointments, success: 'Appointment completed.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  createEncounter: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.createEncounter(params)
+      const encounters = await api.fetchEncounters(params.unitId)
+      set({ encounters, success: 'Encounter created.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  signEncounter: async (unitId, encounterId) => {
+    set({ error: null, success: null })
+    try {
+      await api.signEncounter(unitId, encounterId)
+      const encounters = await api.fetchEncounters(unitId)
+      set({ encounters, success: 'Encounter signed.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  createCarePlan: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.createCarePlan(params)
+      const carePlans = await api.fetchCarePlans(params.unitId)
+      set({ carePlans, success: 'Care plan created.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  updateCarePlanStatus: async (unitId, carePlanId, status) => {
+    set({ error: null, success: null })
+    try {
+      await api.updateCarePlanStatus(unitId, carePlanId, status)
+      const carePlans = await api.fetchCarePlans(unitId)
+      set({ carePlans, success: `Care plan ${status.toLowerCase()}.` })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  createPrescription: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.createPrescription(params)
+      const prescriptions = await api.fetchPrescriptions(params.unitId)
+      set({ prescriptions, success: 'Prescription created.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  discontinuePrescription: async (unitId, prescriptionId) => {
+    set({ error: null, success: null })
+    try {
+      await api.discontinuePrescription(unitId, prescriptionId)
+      const prescriptions = await api.fetchPrescriptions(unitId)
+      set({ prescriptions, success: 'Prescription discontinued.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  createInvestigationOrder: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.createInvestigationOrder(params)
+      const investigations = await api.fetchInvestigationOrders(params.unitId)
+      set({ investigations, success: 'Investigation ordered.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  acknowledgeInvestigation: async (unitId, investigationId) => {
+    set({ error: null, success: null })
+    try {
+      await api.acknowledgeInvestigation(unitId, investigationId)
+      const investigations = await api.fetchInvestigationOrders(unitId)
+      set({ investigations, success: 'Investigation acknowledged.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  generateMarDoses: async (unitId, dateIso) => {
+    set({ error: null, success: null })
+    try {
+      const records = await api.fetchClinicalRecords(unitId)
+      const activeMedications = records.filter((r) => r.type === 'MEDICATION' && (r.state ?? 'ACTIVE').toUpperCase() === 'ACTIVE')
+      const existingAdmins = records.filter((r) => r.type === 'MEDICATION_ADMINISTRATION' && r.detail?.includes(dateIso))
+      for (const med of activeMedications) {
+        const parts = (med.detail ?? '').split(' · ')
+        const dose = parts[0] ?? ''
+        const route = parts[1] ?? ''
+        const frequency = parts[2] ?? ''
+        const hours = parseFrequencyToHours(frequency)
+        for (const hour of hours) {
+          const alreadyExists = existingAdmins.some((a) => a.detail?.includes(med.id) && extractScheduledHour(a.detail ?? '') === hour)
+          if (alreadyExists) continue
+          await api.saveMedicationAdministration({
+            unitId,
+            patientId: med.patientId,
+            medicationRecordId: med.id,
+            drugName: med.summary ?? '',
+            dose,
+            route,
+            frequency,
+            scheduledDateIso: dateIso,
+            scheduledTimeHour: hour,
+            status: 'SCHEDULED',
+          })
+        }
+      }
+      const updated = await api.fetchClinicalRecords(unitId)
+      const medicationAdministrations = updated.filter((r) => r.type === 'MEDICATION_ADMINISTRATION')
+      set({ records: updated, medicationAdministrations, success: 'Scheduled doses generated.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  administerDose: async (unitId, recordId) => {
+    set({ error: null, success: null })
+    try {
+      await api.updateMedicationAdministrationStatus(unitId, recordId, 'ADMINISTERED')
+      const updated = await api.fetchClinicalRecords(unitId)
+      const medicationAdministrations = updated.filter((r) => r.type === 'MEDICATION_ADMINISTRATION')
+      set({ records: updated, medicationAdministrations, success: 'Dose administered.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+    }
+  },
+
+  refuseDose: async (unitId, recordId) => {
+    set({ error: null, success: null })
+    try {
+      await api.updateMedicationAdministrationStatus(unitId, recordId, 'REFUSED')
+      const updated = await api.fetchClinicalRecords(unitId)
+      const medicationAdministrations = updated.filter((r) => r.type === 'MEDICATION_ADMINISTRATION')
+      set({ records: updated, medicationAdministrations, info: 'Dose refused.' })
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
     }
   },
 

@@ -15,6 +15,14 @@ export default {
           info: '#3373CC',
           success: '#2D6B4F',
         },
+        outpatient: {
+          primary: '#6D28D9',
+          secondary: '#8B5CF6',
+          accent: '#A78BFA',
+          surface: '#F5F3FF',
+          border: '#DDD6FE',
+          background: '#FAF5FF',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

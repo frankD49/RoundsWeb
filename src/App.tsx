@@ -4,11 +4,15 @@ import { useAuthStore } from '@/stores/auth'
 import { useClinicalStore } from '@/stores/clinical'
 import AuthScreen from '@/screens/AuthScreen'
 import UnitSelectionScreen from '@/screens/UnitSelectionScreen'
+import ModeSelectionScreen from '@/screens/ModeSelectionScreen'
 import DeviceAuthorizationScreen from '@/screens/DeviceAuthorizationScreen'
 import ClinicalShell from '@/components/ClinicalShell'
 import HomeScreen from '@/screens/HomeScreen'
 import PatientListScreen from '@/screens/PatientListScreen'
 import PatientDetailScreen from '@/screens/PatientDetailScreen'
+import OutpatientScreen from '@/screens/OutpatientScreen'
+import OutpatientDashboardScreen from '@/screens/OutpatientDashboardScreen'
+import RxScreen from '@/screens/RxScreen'
 import MembersScreen from '@/screens/MembersScreen'
 import SettingsScreen from '@/screens/SettingsScreen'
 
@@ -48,6 +52,10 @@ export default function App() {
     )
   }
 
+  if (deviceAuthStatus === 'unknown') {
+    return <ModeSelectionScreen />
+  }
+
   if (deviceAuthStatus !== 'ready') {
     const activeUnit = units.find((u) => u.id === activeUnitId)
     return (
@@ -66,6 +74,9 @@ export default function App() {
         <Route path="/" element={<HomeScreen />} />
         <Route path="/patients" element={<PatientListScreen />} />
         <Route path="/patients/:patientId" element={<PatientDetailScreen />} />
+        <Route path="/outpatient" element={<OutpatientScreen />} />
+        <Route path="/outpatient-dashboard" element={<OutpatientDashboardScreen />} />
+        <Route path="/rx" element={<RxScreen />} />
         <Route path="/members" element={<MembersScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
