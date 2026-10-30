@@ -125,12 +125,25 @@ async function restPost(path: string, body: unknown, prefer?: string, query?: Re
 
 // --- Device registration ---
 
+let registrationInFlight: Promise<{ deviceId: string; publicKeyX963: string }> | null = null
+
 /**
  * Registers the web browser as an encryption device.
- * Generates a P-256 key pair (or reuses an existing one), upserts the device
- * row in encryption_devices, and stores the private key + device ID in IndexedDB.
+ * Concurrent calls share a single registration — without this, overlapping
+ * invocations (StrictMode remounts, effect re-runs, manual retries) each read
+ * an empty key store before the first write commits and each insert a new
+ * encryption_devices row, flooding the pending-device list.
  */
-export async function registerWebDevice(): Promise<{ deviceId: string; publicKeyX963: string }> {
+export function registerWebDevice(): Promise<{ deviceId: string; publicKeyX963: string }> {
+  if (!registrationInFlight) {
+    registrationInFlight = doRegisterWebDevice().finally(() => {
+      registrationInFlight = null
+    })
+  }
+  return registrationInFlight
+}
+
+async function doRegisterWebDevice(): Promise<{ deviceId: string; publicKeyX963: string }> {
   const userId = await getUserId()
 
   // Check if we already have a device key pair stored
@@ -158,18 +171,17 @@ export async function registerWebDevice(): Promise<{ deviceId: string; publicKey
     return { deviceId, publicKeyX963: bytesToBase64Url(publicKeyX963) }
   }
 
-  // Device already registered — look up the existing device row from server
-  try {
-    const rows = await restGet<EncryptionDeviceRow[]>('encryption_devices', {
-      id: `eq.${deviceId}`,
-      select: 'id,public_key_x963',
-      limit: '1',
-    })
-    if (rows && rows.length > 0) {
-      return { deviceId, publicKeyX963: rows[0].public_key_x963 }
-    }
-  } catch {
-    // fall through to re-registration
+  // Device already registered — look up the existing device row from server.
+  // Only fall through to re-registration when the row is confirmed absent;
+  // a failed GET must propagate, otherwise every retry on a flaky network
+  // mints a duplicate encryption_devices row.
+  const rows = await restGet<EncryptionDeviceRow[]>('encryption_devices', {
+    id: `eq.${deviceId}`,
+    select: 'id,public_key_x963',
+    limit: '1',
+  })
+  if (rows && rows.length > 0) {
+    return { deviceId, publicKeyX963: rows[0].public_key_x963 }
   }
 
   // Device ID not found on server — generate new key pair and register
