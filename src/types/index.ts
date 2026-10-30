@@ -39,6 +39,9 @@ export interface PatientRow {
   hospitalNumber: string | null
   ageYears: string | null
   sex: string | null
+  phone: string | null
+  patientIdNumber: string | null
+  dateOfBirth: string | null
   status: string
   updatedAt: string
 }
@@ -59,6 +62,7 @@ export type ClinicalRecordType =
   | 'ALLERGY'
   | 'MEDICATION'
   | 'MEDICATION_ADMINISTRATION'
+  | 'DISCHARGE_SUMMARY'
 
 export interface ClinicalRecordRow {
   id: string

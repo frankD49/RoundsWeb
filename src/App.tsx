@@ -13,6 +13,9 @@ import PatientDetailScreen from '@/screens/PatientDetailScreen'
 import OutpatientScreen from '@/screens/OutpatientScreen'
 import OutpatientDashboardScreen from '@/screens/OutpatientDashboardScreen'
 import RxScreen from '@/screens/RxScreen'
+import ReportsScreen from '@/screens/ReportsScreen'
+import ReferralScreen from '@/screens/ReferralScreen'
+import { MessagesScreen, AlertsScreen, AnalyticsScreen } from '@/screens/UnitScreens'
 import MembersScreen from '@/screens/MembersScreen'
 import SettingsScreen from '@/screens/SettingsScreen'
 
@@ -77,6 +80,11 @@ export default function App() {
         <Route path="/outpatient" element={<OutpatientScreen />} />
         <Route path="/outpatient-dashboard" element={<OutpatientDashboardScreen />} />
         <Route path="/rx" element={<RxScreen />} />
+        <Route path="/reports" element={<ReportsScreen />} />
+        <Route path="/referrals" element={<ReferralScreen />} />
+        <Route path="/messages" element={<MessagesScreen />} />
+        <Route path="/alerts" element={<AlertsScreen />} />
+        <Route path="/analytics" element={<AnalyticsScreen />} />
         <Route path="/members" element={<MembersScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />

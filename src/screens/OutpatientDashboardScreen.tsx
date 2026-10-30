@@ -3,7 +3,7 @@ import { useClinicalStore } from '@/stores/clinical'
 import { useNavigate } from 'react-router-dom'
 import {
   Calendar, FileText, ClipboardList, Pill, FlaskConical,
-  AlertCircle, ArrowRight,
+  AlertCircle,
 } from 'lucide-react'
 
 export default function OutpatientDashboardScreen() {

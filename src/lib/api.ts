@@ -12,6 +12,7 @@ import {
 } from './keyManager'
 import type {
   ClinicalUnitSummary,
+  ClinicalRecordType,
   ClinicalMemberSummary,
   ClinicalInvitationSummary,
   PatientRow,
@@ -226,11 +227,14 @@ export async function fetchPatients(unitId: string): Promise<PatientRow[]> {
     encrypted_hospital_number: string | null
     encrypted_age_years: string | null
     encrypted_sex: string | null
+    encrypted_phone: string | null
+    encrypted_patient_id_number: string | null
+    encrypted_date_of_birth: string | null
     status: string
     updated_at: string
   }>>('rest/v1/patients', 'GET', {
     query: {
-      select: 'id,unit_id,code,encrypted_initials,encrypted_hospital_number,encrypted_age_years,encrypted_sex,status,updated_at',
+      select: 'id,unit_id,code,encrypted_initials,encrypted_hospital_number,encrypted_age_years,encrypted_sex,encrypted_phone,encrypted_patient_id_number,encrypted_date_of_birth,status,updated_at',
       unit_id: `eq.${unitId}`,
       status: 'neq.ARCHIVED',
       order: 'updated_at.desc',
@@ -246,6 +250,9 @@ export async function fetchPatients(unitId: string): Promise<PatientRow[]> {
     hospitalNumber: r.encrypted_hospital_number ? await decryptPatientDemographic(r.encrypted_hospital_number, r.unit_id, r.id, 'hospital_number') : null,
     ageYears: r.encrypted_age_years ? await decryptPatientDemographic(r.encrypted_age_years, r.unit_id, r.id, 'age_years') : null,
     sex: r.encrypted_sex ? await decryptPatientDemographic(r.encrypted_sex, r.unit_id, r.id, 'sex') : null,
+    phone: r.encrypted_phone ? await decryptPatientDemographic(r.encrypted_phone, r.unit_id, r.id, 'phone') : null,
+    patientIdNumber: r.encrypted_patient_id_number ? await decryptPatientDemographic(r.encrypted_patient_id_number, r.unit_id, r.id, 'patient_id_number') : null,
+    dateOfBirth: r.encrypted_date_of_birth ? await decryptPatientDemographic(r.encrypted_date_of_birth, r.unit_id, r.id, 'date_of_birth') : null,
     status: r.status,
     updatedAt: r.updated_at,
   })))
@@ -424,6 +431,9 @@ export async function admitPatient(params: {
   ageYears: string
   sex: string
   diagnosis: string
+  phone?: string
+  patientIdNumber?: string
+  dateOfBirth?: string
 }): Promise<string> {
   const patientId = uuid()
   const userId = await getUserId()
@@ -448,6 +458,24 @@ export async function admitPatient(params: {
     params.sex, params.unitId, patientId, 'sex',
     unitKeyInfo.key, unitKeyInfo.keyId,
   )
+  const encPhone = params.phone?.trim()
+    ? await encryptPatientDemographic(
+        params.phone, params.unitId, patientId, 'phone',
+        unitKeyInfo.key, unitKeyInfo.keyId,
+      )
+    : null
+  const encPatientIdNumber = params.patientIdNumber?.trim()
+    ? await encryptPatientDemographic(
+        params.patientIdNumber, params.unitId, patientId, 'patient_id_number',
+        unitKeyInfo.key, unitKeyInfo.keyId,
+      )
+    : null
+  const encDateOfBirth = params.dateOfBirth?.trim()
+    ? await encryptPatientDemographic(
+        params.dateOfBirth, params.unitId, patientId, 'date_of_birth',
+        unitKeyInfo.key, unitKeyInfo.keyId,
+      )
+    : null
   const lookupHash = await hospitalNumberLookupHash(
     unitKeyInfo.key, params.unitId, params.hospitalNumber,
   )
@@ -460,6 +488,9 @@ export async function admitPatient(params: {
     encrypted_hospital_number: encHospitalNumber,
     encrypted_age_years: encAgeYears,
     encrypted_sex: encSex,
+    encrypted_phone: encPhone,
+    encrypted_patient_id_number: encPatientIdNumber,
+    encrypted_date_of_birth: encDateOfBirth,
     hospital_number_lookup_hash: lookupHash,
     status: 'ACTIVE',
     created_by: userId,
@@ -691,6 +722,46 @@ export async function saveDailyUpdate(params: {
     detail: encDetail,
     state: params.state,
     clinical_date: clinicalDateIso(),
+    created_by: userId,
+  })
+  return id
+}
+
+/**
+ * Generic workspace-section record, matching Android savePatientTabEntry:
+ * section name goes in `summary`, body in `detail`.
+ */
+export async function saveWorkspaceEntry(params: {
+  unitId: string
+  patientId: string
+  type: ClinicalRecordType
+  summary: string
+  detail: string
+  signed?: boolean
+  recordId?: string
+}): Promise<string> {
+  const id = params.recordId ?? uuid()
+  const userId = await getUserId()
+  const patientKeyInfo = await ensurePatientKey(params.unitId, params.patientId, userId)
+  const encSummary = await encryptPatientField(
+    params.summary, params.unitId, params.patientId, id,
+    'clinical_records', 'summary', patientKeyInfo.key, patientKeyInfo.keyId,
+  )
+  const encDetail = await encryptPatientField(
+    params.detail, params.unitId, params.patientId, id,
+    'clinical_records', 'detail', patientKeyInfo.key, patientKeyInfo.keyId,
+  )
+  await upsertRow('clinical_records', {
+    id,
+    unit_id: params.unitId,
+    patient_id: params.patientId,
+    type: params.type,
+    summary: encSummary,
+    detail: encDetail,
+    state: params.signed ? 'SIGNED' : 'ACTIVE',
+    clinical_date: clinicalDateIso(),
+    signed_by: params.signed ? userId : undefined,
+    signed_at: params.signed ? new Date().toISOString() : undefined,
     created_by: userId,
   })
   return id

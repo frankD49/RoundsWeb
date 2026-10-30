@@ -11,14 +11,23 @@ interface Props {
 export default function AdmitPatientModal({ open, onClose, onAdmitted }: Props) {
   const { activeUnitId, admitPatient } = useClinicalStore()
   const [code, setCode] = useState('')
-  const [initials, setInitials] = useState('')
+  const [name, setName] = useState('')
   const [hospitalNumber, setHospitalNumber] = useState('')
-  const [ageYears, setAgeYears] = useState('')
-  const [sex, setSex] = useState('')
+  const [patientIdNumber, setPatientIdNumber] = useState('')
+  const [phone, setPhone] = useState('')
+  const [dateOfBirth, setDateOfBirth] = useState('')
+  const [sex, setSex] = useState('M')
   const [diagnosis, setDiagnosis] = useState('')
   const [saving, setSaving] = useState(false)
 
   if (!open) return null
+
+  const calculatedAge = (() => {
+    if (!dateOfBirth) return ''
+    const dob = new Date(dateOfBirth)
+    const diff = Date.now() - dob.getTime()
+    return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000)).toString()
+  })()
 
   const handleSubmit = async () => {
     if (!activeUnitId || !code.trim() || !diagnosis.trim()) return
@@ -26,15 +35,18 @@ export default function AdmitPatientModal({ open, onClose, onAdmitted }: Props) 
     const id = await admitPatient({
       unitId: activeUnitId,
       code: code.trim(),
-      initials: initials.trim(),
+      initials: name.trim(),
       hospitalNumber: hospitalNumber.trim(),
-      ageYears: ageYears.trim(),
+      ageYears: calculatedAge,
       sex: sex.trim(),
       diagnosis: diagnosis.trim(),
+      phone: phone.trim(),
+      patientIdNumber: patientIdNumber.trim(),
+      dateOfBirth: dateOfBirth,
     })
     setSaving(false)
     if (id) {
-      setCode(''); setInitials(''); setHospitalNumber(''); setAgeYears(''); setSex(''); setDiagnosis('')
+      setCode(''); setName(''); setHospitalNumber(''); setPatientIdNumber(''); setPhone(''); setDateOfBirth(''); setSex('M'); setDiagnosis('')
       onClose()
       onAdmitted?.(id)
     }
@@ -42,7 +54,7 @@ export default function AdmitPatientModal({ open, onClose, onAdmitted }: Props) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-clinical-surface rounded-2xl border border-clinical-border shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-clinical-surface rounded-2xl border border-clinical-border shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-clinical-border">
           <h2 className="text-lg font-semibold text-gray-900">Admit Patient</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -51,24 +63,51 @@ export default function AdmitPatientModal({ open, onClose, onAdmitted }: Props) 
         </div>
         <div className="px-5 py-4 space-y-3">
           <Field label="Patient Code *" value={code} onChange={setCode} placeholder="e.g. Bed-1A" />
+          <Field label="Full Name" value={name} onChange={setName} placeholder="e.g. John Doe" />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Initials" value={initials} onChange={setInitials} placeholder="e.g. JD" />
             <Field label="Hospital No." value={hospitalNumber} onChange={setHospitalNumber} placeholder="e.g. 12345" />
+            <Field label="Patient ID No." value={patientIdNumber} onChange={setPatientIdNumber} placeholder="e.g. P-001" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Age (years)" value={ageYears} onChange={setAgeYears} placeholder="e.g. 65" />
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Sex</label>
-              <select
-                value={sex}
-                onChange={(e) => setSex(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-clinical-primary/20 focus:border-clinical-primary"
+          <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="e.g. +234 800 123 4567" />
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth</label>
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-clinical-primary/20 focus:border-clinical-primary"
+            />
+          </div>
+          {calculatedAge && (
+            <div className="text-sm text-gray-500">
+              Age: <span className="font-medium text-gray-700">{calculatedAge} years</span>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Sex</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setSex('M')}
+                className={`py-2.5 rounded-lg font-medium text-sm transition-colors border ${
+                  sex === 'M'
+                    ? 'bg-clinical-primary text-white border-clinical-primary'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
               >
-                <option value="">Select…</option>
-                <option value="M">Male</option>
-                <option value="F">Female</option>
-                <option value="O">Other</option>
-              </select>
+                Male
+              </button>
+              <button
+                type="button"
+                onClick={() => setSex('F')}
+                className={`py-2.5 rounded-lg font-medium text-sm transition-colors border ${
+                  sex === 'F'
+                    ? 'bg-clinical-primary text-white border-clinical-primary'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                Female
+              </button>
             </div>
           </div>
           <Field label="Diagnosis *" value={diagnosis} onChange={setDiagnosis} placeholder="e.g. Community-acquired pneumonia" />
@@ -93,12 +132,12 @@ export default function AdmitPatientModal({ open, onClose, onAdmitted }: Props) 
   )
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <input
-        type="text"
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

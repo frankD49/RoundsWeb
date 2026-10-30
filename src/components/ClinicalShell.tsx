@@ -1,4 +1,4 @@
-import { Home, Users, Settings, LogOut, Stethoscope, Building2, ChevronDown, Calendar, FileText, ClipboardList, Pill, FlaskConical, BedDouble, Activity, MessageSquare, AlertCircle, BarChart3, MoreHorizontal, Cross } from 'lucide-react'
+import { Home, Users, Settings, LogOut, Stethoscope, Building2, ChevronDown, Calendar, FileText, ClipboardList, Pill, FlaskConical, MessageSquare, AlertCircle, BarChart3, Cross, FileSearch, Send } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuthStore, type ClinicalMode } from '@/stores/auth'
@@ -9,6 +9,10 @@ const inpatientNavItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/patients', label: 'Patients', icon: Stethoscope },
   { to: '/rx', label: 'Rx', icon: Cross },
+  { to: '/reports', label: 'Reports', icon: FileSearch },
+  { to: '/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/alerts', label: 'Alerts', icon: AlertCircle },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/members', label: 'Members', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -20,6 +24,8 @@ const outpatientNavItems = [
   { to: '/outpatient', label: 'Care Plans', icon: ClipboardList },
   { to: '/outpatient', label: 'Prescriptions', icon: Pill },
   { to: '/outpatient', label: 'Investigations', icon: FlaskConical },
+  { to: '/referrals', label: 'Referrals', icon: Send },
+  { to: '/reports', label: 'Reports', icon: FileSearch },
   { to: '/members', label: 'Members', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]

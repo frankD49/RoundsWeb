@@ -5,6 +5,7 @@ import type {
   ClinicalMemberSummary,
   PatientRow,
   ClinicalRecordRow,
+  ClinicalRecordType,
   ClinicalResultRow,
   CoordinationEventRow,
   AppointmentRow,
@@ -92,6 +93,9 @@ interface ClinicalState extends MessageState {
     ageYears: string
     sex: string
     diagnosis: string
+    phone?: string
+    patientIdNumber?: string
+    dateOfBirth?: string
   }) => Promise<string | null>
   saveProblem: (params: {
     unitId: string
@@ -142,6 +146,14 @@ interface ClinicalState extends MessageState {
     plan: string
     state: string
     recordId?: string
+  }) => Promise<string | null>
+  saveWorkspaceEntry: (params: {
+    unitId: string
+    patientId: string
+    type: ClinicalRecordType
+    summary: string
+    detail: string
+    signed?: boolean
   }) => Promise<string | null>
   updateRecordState: (unitId: string, recordId: string, state: string) => Promise<void>
   dischargePatient: (unitId: string, patientId: string) => Promise<void>
@@ -482,6 +494,19 @@ export const useClinicalStore = create<ClinicalState>((set) => ({
       const id = await api.saveDailyUpdate(params)
       const records = await api.fetchClinicalRecords(params.unitId)
       set({ records, success: 'Progress note saved.' })
+      return id
+    } catch (e) {
+      set({ error: String(e instanceof Error ? e.message : e) })
+      return null
+    }
+  },
+
+  saveWorkspaceEntry: async (params) => {
+    set({ error: null, success: null })
+    try {
+      const id = await api.saveWorkspaceEntry(params)
+      const records = await api.fetchClinicalRecords(params.unitId)
+      set({ records, success: `${params.summary} entry saved.` })
       return id
     } catch (e) {
       set({ error: String(e instanceof Error ? e.message : e) })
