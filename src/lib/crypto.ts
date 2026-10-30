@@ -277,6 +277,7 @@ const K_ACTIVE_PATIENT = 'active-patient:'
 function openKeyDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(KEY_DB, DB_VERSION)
+    const timer = setTimeout(() => reject(new Error('Key storage timed out — close other Rounds tabs and retry')), 10000)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(KEY_STORE)) {
@@ -286,8 +287,18 @@ function openKeyDB(): Promise<IDBDatabase> {
         db.deleteObjectStore('unit-keys')
       }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      clearTimeout(timer)
+      const db = req.result
+      // Yield to version upgrades from other tabs instead of blocking them
+      db.onversionchange = () => db.close()
+      resolve(db)
+    }
+    req.onblocked = () => {
+      clearTimeout(timer)
+      reject(new Error('Key storage is open in another tab — close it and retry'))
+    }
+    req.onerror = () => { clearTimeout(timer); reject(req.error) }
   })
 }
 

@@ -33,9 +33,11 @@ async function getAccessToken(): Promise<string> {
 }
 
 async function getUserId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  return user.id
+  // getUser() hits the network and can hang on flaky connections or lock
+  // contention; getSession() reads the same user id locally.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) throw new Error('Not authenticated')
+  return session.user.id
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -91,6 +93,7 @@ async function restGet<T>(path: string, query: Record<string, string>): Promise<
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v)
   const res = await fetch(url.toString(), {
     headers: { apikey: PUBLISHABLE_KEY, Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) throw new Error(`REST GET ${path} failed: ${res.status}`)
   const text = await res.text()
@@ -112,6 +115,7 @@ async function restPost(path: string, body: unknown, prefer?: string, query?: Re
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
