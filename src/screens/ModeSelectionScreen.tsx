@@ -14,7 +14,10 @@ export default function ModeSelectionScreen() {
 
   const handleSelect = (mode: 'inpatient' | 'outpatient') => {
     setClinicalMode(mode)
-    setDeviceAuthStatus('unknown')
+    // Hand off to the device-authorization gate — any non-'unknown',
+    // non-'ready' status routes there and the screen self-drives the
+    // real readiness check.
+    setDeviceAuthStatus('awaiting-authorization')
   }
 
   return (
