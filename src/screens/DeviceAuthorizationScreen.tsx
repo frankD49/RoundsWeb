@@ -23,7 +23,7 @@ export default function DeviceAuthorizationScreen({ unitId, unitName, onAuthoriz
     }
   }, [])
 
-  const checkReadiness = useCallback(async () => {
+  const checkReadiness = useCallback(async (): Promise<DeviceAuthResult['state'] | 'error'> => {
     try {
       const result: DeviceAuthResult = await establishEncryptionReadiness(unitId)
       if (result.state === 'ready') {
@@ -39,10 +39,12 @@ export default function DeviceAuthorizationScreen({ unitId, unitName, onAuthoriz
         setPhase('no-unit-key')
         setMessage(result.message ?? 'No active encryption key for this unit.')
       }
+      return result.state
     } catch (err) {
       stopPolling()
       setPhase('error')
       setMessage(err instanceof Error ? err.message : 'Failed to check authorization status.')
+      return 'error'
     }
   }, [unitId, onAuthorized, stopPolling])
 
@@ -52,20 +54,19 @@ export default function DeviceAuthorizationScreen({ unitId, unitName, onAuthoriz
   }, [checkReadiness])
 
   const handleRegister = useCallback(async () => {
+    stopPolling()
     setPhase('registering')
     setMessage('Registering this browser as a device…')
     try {
       await registerWebDevice()
       setMessage('Device registered. Checking authorization status…')
-      await checkReadiness()
-      if (phase !== 'authorized' && phase !== 'no-unit-key' && phase !== 'error') {
-        startPolling()
-      }
+      const outcome = await checkReadiness()
+      if (outcome === 'awaiting-authorization') startPolling()
     } catch (err) {
       setPhase('error')
       setMessage(err instanceof Error ? err.message : 'Failed to register device.')
     }
-  }, [checkReadiness, startPolling, phase])
+  }, [checkReadiness, startPolling, stopPolling])
 
   useEffect(() => {
     handleRegister()
